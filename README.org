@@ -1,0 +1,26 @@
+
+* Introduction
+
+This repository provides an example of how to use [[https://github.com/magit/forge][magit/forge]] to prioritize
+GitHub issues. With this code, you can easily view your GitHub issues
+in prioritized order on [[https://github.com/magit/forge][magit/forge]] (something [[https://github.com/isaacs/github/issues/472][long requested]] for the
+GitHub web interface). 
+
+* Usage
+
+To try this out, just load the code in the =magit-priority-example.el=
+(after setting up [[https://github.com/magit/forge][magit/forge]] for the desired repository), and call
+the =forge-list-labeled-issues= method.
+
+For example, if you try this on the [[https://github.com/emin63/magit-priority-example][emin63/magit-priority-example]] and
+use =priority:%= for your label, you will get a result like:
+
+#+BEGIN_EXAMPLE
+    # Title
+    1 [priority:1] describe how to use priority:NUM labels
+    2 [priority:2] make some prioritized issues
+#+END_EXAMPLE
+
+which shows you all issues with a label that starts with =priority:=
+so that you can see prioritized issues. You can click on the =Title=
+column to control sorting by ascending/descending priority.
