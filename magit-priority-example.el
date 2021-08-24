@@ -91,6 +91,22 @@ times (once for each matching label)."
    (forge--tablist-columns-vector 'issue) id label)
   )
 
+(defun forge-list-labeled-issues-put-label-in-title (issue-info)
+  "Helper to take issue label and put it into the title.
+
+This function takes in an ISSUE-INFO (i.e., an element of the list
+produced by the forge-list-labeled-issues-query function) and puts
+the label into the issue title."
+  (setcar
+   (nthcdr 2 issue-info) ;; title is in element 2
+   (format "[%s] %s"
+	   (nth 3 issue-info) ;; label is in element 3
+	   (nth 2 issue-info)
+	   )
+   )
+  )
+
+  
 (defun forge-list-labeled-issues-main (id label)
   "List issues of the repo with given ID that have LABEL.
 
@@ -100,12 +116,7 @@ used interactively."
       #'forge-issue-list-mode id nil nil
     (lambda ()
       (let* ((my-items (forge-list-labeled-issues-query id label)))
-	(message (format "r->%s" my-items))
-	(mapc (lambda (thing)
-		(setcar (nthcdr 2 thing)
-			(format "[%s] %s" (nth 3 thing) (nth 2 thing)))
-		)
-	      my-items)
+	(mapc 'forge-list-labeled-issues-put-label-in-title my-items)
 	my-items)
       )
     )
