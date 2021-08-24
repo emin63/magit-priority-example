@@ -51,33 +51,49 @@ Issues are listed in a separate buffer."
   )
 
 (defun forge-list-labeled-issues-query (id label)
-  "FIXME
-blah."
+  "Query magit db with given ID for the desired LABEL.
+
+This is a helper function which constructs a SQL query for the forge
+database stored locally to get issues matching LABEL.  Note that you
+can make label a 'like pattern' such as 'priority:%' to get things
+which match multiple labels.
+
+The return value is a list of items where each item has the following data:
+
+  - issue ID in the forge db (this is some long weird string used for ID)
+  - issue number (as you see on github)
+  - issue summary
+  - label we pulled for the issue
+
+IMPORTANT: you should make sure that LABEL is a pattern which
+does not match multiple labels on a single issue (e.g., do not
+use a pattern like '%').  Otherwise issues will be listed multiple
+times (once for each matching label)."
   (forge-sql
-   [:select [$i1 label:name]
-	    :from [issue issue_label label]
-	    :where (and (= issue_label:issue issue:id)
-			(= issue_label:id    label:id)
-			(= issue:repository  $s2)
-			(like label:name        $s3)
-			(isnull issue:closed)
-			)
-	    :order-by [(desc label:name updated)]]
-   (forge--tablist-columns-vector 'issue)
-   id label)
+   [:select [$i1 label:name] ;; $i1 means first thing in params below
+	    :from [issue issue_label label] :where
+	    (and
+	     (= issue_label:issue issue:id)
+	     (= issue_label:id    label:id)
+	     (= issue:repository  $s2) ; $s2 means second thing in params below
+	     (like label:name     $s3) ; $se means third thing in params below
+	     (isnull issue:closed)
+	     )
+	    :order-by [(asc label:name updated)]]
+   ;; query parameters qre below
+   (forge--tablist-columns-vector 'issue) id label)
   )
 
 (defun forge-list-labeled-issues-main (id label)
   "List issues of the repo with given ID that have LABEL.
 
 This is intended to be called by forge-list-labeled-issues if
-used interactively.
-
-"
+used interactively."
   (forge-topic-list-setup
       #'forge-issue-list-mode id nil nil
     (lambda ()
       (let* ((my-items (forge-list-labeled-issues-query id label)))
+	(message (format "r->%s" my-items))
 	(mapc (lambda (thing)
 		(setcar (nthcdr 2 thing)
 			(format "[%s] %s" (nth 3 thing) (nth 2 thing)))
