@@ -111,7 +111,18 @@ the label into the issue title."
   "List issues of the repo with given ID that have LABEL.
 
 This is intended to be called by forge-list-labeled-issues if
-used interactively."
+used interactively.
+
+This function calls forge-topic-list-setup to display issues
+using standard forge functions based on the output of
+forge-list-labeled-issues-query (after tweaking the formatting
+with forge-list-labeled-issues-put-label-in-title).  Ideally, we
+should figure out how to work with the rest of the forge code so
+that we can set a value in the forge-topic-list-columns variable
+to tell it to display labels.  Since that seems complicated, it
+seemed easier to just use
+forge-list-labeled-issues-put-label-in-title as a simple hack for
+now to display the label."
   (forge-topic-list-setup ;; function which displays results
       #'forge-issue-list-mode id nil nil
     (lambda () ;; we pass forge-topic-list-setup function to get the data
