@@ -113,6 +113,13 @@ the label into the issue title."
 This is intended to be called by forge-list-labeled-issues if
 used interactively.
 
+If user passes nil for ID, then we use forge-get-repository to find repo.
+This makes it so that the user can bind a key to a command like
+
+  (forge-list-labeled-issues-main nil \"priority:%\")
+
+to easily get prioritized issues.
+
 This function calls forge-topic-list-setup to display issues
 using standard forge functions based on the output of
 forge-list-labeled-issues-query (after tweaking the formatting
@@ -123,13 +130,16 @@ to tell it to display labels.  Since that seems complicated, it
 seemed easier to just use
 forge-list-labeled-issues-put-label-in-title as a simple hack for
 now to display the label."
-  (forge-topic-list-setup ;; function which displays results
-      #'forge-issue-list-mode id nil nil
-    (lambda () ;; we pass forge-topic-list-setup function to get the data
-      (mapc    ;; use mapc to post-process results of our own forge-query
-       'forge-list-labeled-issues-put-label-in-title
-       (forge-list-labeled-issues-query id label)
-       )
+  (let ((id (or id  ;; if id is nil, try to load it ourselves
+		(slot-value (forge-get-repository t) 'id))))
+    (forge-topic-list-setup ;; function which displays results
+	#'forge-issue-list-mode id nil nil
+      (lambda () ;; we pass forge-topic-list-setup function to get the data
+	(mapc    ;; use mapc to post-process results of our own forge-query
+	 'forge-list-labeled-issues-put-label-in-title
+	 (forge-list-labeled-issues-query id label)
+	 )
+	)
       )
     )
   )
