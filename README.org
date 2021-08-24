@@ -8,9 +8,9 @@ GitHub web interface).
 
 * Usage
 
-To try this out, just load the code in the =magit-priority-example.el=
-(after setting up [[https://github.com/magit/forge][magit/forge]] for the desired repository), and call
-the =forge-list-labeled-issues= method.
+To try this out, just load the code in the [[https://raw.githubusercontent.com/emin63/magit-priority-example/main/magit-priority-example.el][magit-priority-example.el]]
+file (after setting up [[https://github.com/magit/forge][magit/forge]] for the desired repository), and
+call the =forge-list-labeled-issues= method.
 
 For example, if you try this on the [[https://github.com/emin63/magit-priority-example][emin63/magit-priority-example]] and
 use =priority:%= for your label, you will get a result like:
