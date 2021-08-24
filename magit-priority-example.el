@@ -20,16 +20,23 @@
 
 ;;; Commentary:
 
-;; Example to illustrate prioritizing github issues
+;; Example to illustrate prioritizing github issues.  Basically, you
+;; apply labels like 'priority:1' and 'priority:2' then you can
+;; call forge-list-labeled-issues with LABEL as 'priority:%' to get
+;; prioritized issues.
 
 ;;; Code:
 
 (defun forge-list-labeled-issues (id label)
   "List issues of the repo with given ID that have LABEL.
 
-Note that LABEL can be a SQL like pattern such as 'priority:%' so that
-you can get a sorted list of a set of similar issues.  See examples
-at https://github.com/emin63/magit-priority-example for details.
+Note that LABEL can be a SQL like pattern such as 'priority:%' so
+that you can get a sorted list of a set of similar issues.
+Basically, you apply labels like 'priority:1' and 'priority:2' to
+your issues then you can call forge-list-labeled-issues with
+LABEL as 'priority:%' to get prioritized issues.
+
+See examples at https://github.com/emin63/magit-priority-example for details.
 
 Issues are listed in a separate buffer."
   (interactive  ;; interactively get desired arguments from user
