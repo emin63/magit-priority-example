@@ -112,15 +112,17 @@ the label into the issue title."
 
 This is intended to be called by forge-list-labeled-issues if
 used interactively."
-  (forge-topic-list-setup
+  (forge-topic-list-setup ;; function which displays results
       #'forge-issue-list-mode id nil nil
-    (lambda ()
-      (let* ((my-items (forge-list-labeled-issues-query id label)))
-	(mapc 'forge-list-labeled-issues-put-label-in-title my-items)
-	my-items)
+    (lambda () ;; we pass forge-topic-list-setup function to get the data
+      (mapc    ;; use mapc to post-process results of our own forge-query
+       'forge-list-labeled-issues-put-label-in-title
+       (forge-list-labeled-issues-query id label)
+       )
       )
     )
   )
+
 
 ;;; _
 (provide 'magit-priority-example)
