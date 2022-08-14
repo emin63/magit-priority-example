@@ -24,3 +24,6 @@ use =priority:%= for your label, you will get a result like:
 which shows you all issues with a label that starts with =priority:=
 so that you can see prioritized issues. You can click on the =Title=
 column to control sorting by ascending/descending priority.
+
+You can use the =forge-get-repo-ids= function to get a list of the
+repositories in your forge along with the corresponding forge ID.
