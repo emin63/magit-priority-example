@@ -62,6 +62,37 @@ Issues are listed in a separate buffer."
   (forge-list-labeled-issues-main id label)
   )
 
+(defun forge-get-repo-ids (pattern &optional no-msg)
+  "Get list of pairs of repo name and forge repo ID.
+
+Does a forge-sql query to find the name and ID of repositories
+that forge knows about filtered by the given sql PATTERN.  If you
+provide \"%\" for pattern then all repos are returned but if you
+provide something like \"foo%\" then only repos starting with \"foo\"
+are returned.
+
+If the optional NO-MSG evaluates to true, then no message is printed
+to the message buffer while if it is false then the result is shown
+in the message buffer as well as being returned.
+
+This is useful for finding the repo ID for functions such
+as forge-list-orgit-labeled-issues-table."
+  (interactive (list (read-string "pattern: " "%")))
+  (let ((info (forge-sql
+   [:select
+    :distinct [repository:name repository:id]
+    :from [ repository ]
+    :where
+    (like repository:name $s1)
+    ]
+   pattern ;; query paramters
+   )))
+    (if (not no-msg)
+	(message (format "%s" info)))
+    info)
+  )
+
+
 (defun forge-list-labeled-issues-query (id label)
   "Query magit db with given ID for the desired LABEL.
 
