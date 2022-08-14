@@ -319,13 +319,15 @@ details.  Suggested values are 45 and \"..\"."
 		)
 	  )
     (setq result
-	  (concat "| Link | Title | Label |\n"
+	  (concat "|------+-------+-------|\n"
+		  "| Link | Title | Label |\n"
+		  "|------+-------+-------|\n"
 		  (mapconcat
 		   (lambda (item)
 		     (forge-orgit-format-labeled-issue
 		      item ttrim ender)
 		     ) result "\n")
-		  )
+		  "\n|---|\n")
 	  )
     (if do-insert (insert result))
     result
