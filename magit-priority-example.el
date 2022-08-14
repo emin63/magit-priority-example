@@ -287,8 +287,10 @@ trimmed (e.g., \"..\")."
 
 The ID-LIST should be a list of orgit-forge repos.  You can obtain
 this ID using something like `(slot-value (forge-get-repository t) 'id)`
-and then make a list of those IDs.  The LABEL should be a SQL pattern
-such as \"priority:%\" for the label you want to query.
+and then make a list of those IDs.  You can also call forge-get-repo-ids.
+
+The LABEL should be a SQL pattern such as \"priority:%\" for the
+label you want to query.
 
 The result is a string representing an org-table (sorted by
 label) showing the matching issues.
