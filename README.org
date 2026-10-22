@@ -80,17 +80,19 @@ This inserts the same list as an Org table at point (aligned, if the
 buffer is in Org mode):
 
 #+BEGIN_EXAMPLE
-    |-----+------------------+-----------------------|
-    | Pri | Issue            | Title                 |
-    |-----+------------------+-----------------------|
-    |   1 | emin63/alpha#3   | crash when saving     |
-    |   1 | emin63/beta#10   | fix login loop        |
-    |   2 | emin63/alpha#1   | slow startup          |
-    |   - | emin63/alpha#2   | typo in error message |
-    |-----+------------------+-----------------------|
+    |----------+-----------------------+-----|
+    | Issue    | Title                 | Pri |
+    |----------+-----------------------+-----|
+    | alpha#3  | crash when saving     |   1 |
+    | beta#10  | fix login loop        |   1 |
+    | alpha#1  | slow startup          |   2 |
+    | alpha#2  | typo in error message |   - |
+    |----------+-----------------------+-----|
 #+END_EXAMPLE
 
-Each =Issue= cell is an =orgit-topic:= link. Titles longer than
+Each =Issue= cell is an =orgit-topic:= link labeled with the
+repository name (without the owner) and issue number, as in the older
+=forge-list-orgit-labeled-issues-table=. Titles longer than
 =magit-priority-title-width= (default 60) are trimmed.
 
 *** Safety note: titles are cleaned, sometimes invisibly

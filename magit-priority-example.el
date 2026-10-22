@@ -549,8 +549,9 @@ PRIORITY-PATTERN overrides `magit-priority-label-pattern'.
 
 Each issue is a property list with the keys :id (the Forge ID),
 :number, :title (on one line; see `magit-priority--one-line'),
-:repo (\"owner/name\"), :repo-id, :label (the priority label, or
-nil) and :priority (the number in :label, or nil)."
+:repo (\"owner/name\"), :name (the repository name without the
+owner), :repo-id, :label (the priority label, or nil) and
+:priority (the number in :label, or nil)."
   (let* ((ppat (or priority-pattern magit-priority-label-pattern))
          (extra (magit-priority--nonblank extra-label))
          (rows (magit-priority--open-issues (or extra ppat) repo-ids))
@@ -565,7 +566,8 @@ nil) and :priority (the number in :label, or nil)."
       (let ((label (gethash id best)))
         (push (list :id id :number number
                     :title (magit-priority--one-line title)
-                    :repo (format "%s/%s" owner name) :repo-id repo-id
+                    :repo (format "%s/%s" owner name) :name name
+                    :repo-id repo-id
                     :label label :priority (magit-priority--rank label))
               issues)))
     (when assigned-to-me
@@ -600,28 +602,30 @@ A label without a number is shown as is (on one line)."
 
 (defun magit-priority--org-table-string (issues)
   "Return an Org table string listing ISSUES.
+The columns are Issue (a link labeled with the repository name,
+without the owner, and the issue number), Title and Pri.
 Text from the forge goes through `magit-priority--org-cell', which
 may add invisible zero width spaces; see the comment above
 `magit-priority--one-line'."
   (concat
-   "|-----+-------+-------|\n"
-   "| Pri | Issue | Title |\n"
-   "|-----+-------+-------|\n"
+   "|-------+-------+-----|\n"
+   "| Issue | Title | Pri |\n"
+   "|-------+-------+-----|\n"
    (mapconcat
     (lambda (issue)
-      (format "| %s | [[orgit-topic:%s][%s#%s]] | %s |\n"
-              (magit-priority--org-cell (magit-priority--describe issue))
+      (format "| [[orgit-topic:%s][%s#%s]] | %s | %s |\n"
               (plist-get issue :id)
-              (plist-get issue :repo)
+              (plist-get issue :name)
               (plist-get issue :number)
               (magit-priority--org-cell
                (if magit-priority-title-width
                    (truncate-string-to-width (plist-get issue :title)
                                              magit-priority-title-width
                                              nil nil "..")
-                 (plist-get issue :title)))))
+                 (plist-get issue :title)))
+              (magit-priority--org-cell (magit-priority--describe issue))))
     issues "")
-   "|-----+-------+-------|\n"))
+   "|-------+-------+-----|\n"))
 
 (defun magit-priority-org-table (extra-label &optional assigned-to-me
                                              repo-ids no-insert)
