@@ -4,26 +4,196 @@
 This repository provides an example of how to use [[https://github.com/magit/forge][magit/forge]] to prioritize
 GitHub issues. With this code, you can easily view your GitHub issues
 in prioritized order on [[https://github.com/magit/forge][magit/forge]] (something [[https://github.com/isaacs/github/issues/472][long requested]] for the
-GitHub web interface). 
+GitHub web interface).
+
+The idea is simple: put labels like =priority:1=, =priority:2=, ...,
+=priority:9= on your issues. The commands below then list open issues
+from every repository Forge tracks, most urgent first, optionally
+limited to issues with some other label (e.g., =bug=) and/or issues
+assigned to you.
+
+Because everything is read from Forge's local database, it works for
+any forge Forge supports (GitHub, GitLab, Gitea, ...), works offline,
+and is only as fresh as your last =forge-pull=.
+
+* Setup
+
+1. Set up [[https://github.com/magit/forge][magit/forge]] and pull the repositories you care about. This
+   code was tested with the October 2025 Forge snapshot on Emacs 29.
+2. Load [[https://raw.githubusercontent.com/emin63/magit-priority-example/main/magit-priority-example.el][magit-priority-example.el]], e.g.:
+   #+BEGIN_SRC emacs-lisp
+   (load "/path/to/magit-priority-example.el")
+   #+END_SRC
+3. Optionally install [[https://github.com/magit/orgit][orgit-forge]] so the links in the Org tables open
+   issues in Forge.
 
 * Usage
 
-To try this out, just load the code in the [[https://raw.githubusercontent.com/emin63/magit-priority-example/main/magit-priority-example.el][magit-priority-example.el]]
-file (after setting up [[https://github.com/magit/forge][magit/forge]] for the desired repository), and
-call the =forge-list-labeled-issues= method.
+Both commands below ask for an /extra label/:
 
-For example, if you try this on the [[https://github.com/emin63/magit-priority-example][emin63/magit-priority-example]] and
-use =priority:%= for your label, you will get a result like:
+- Type a label (with completion) such as =bug= to list open issues with
+  that label. Prioritized issues come first, sorted by priority, and
+  issues without a priority label are listed at the bottom.
+- The label is an SQL =LIKE= pattern, so =area:%= matches =area:ui=,
+  =area:db= and so on. Two things to be aware of, since this is how
+  SQL =LIKE= works:
+  - =_= is also a wildcard matching any single character, so
+    =needs_review= also matches =needs-review=.
+  - Matching ignores case, so =bug= also matches =BUG=.
+- Leave it empty (or only spaces) to list every prioritized issue.
+
+Only repositories Forge /tracks/ are searched. Forge also stores some
+repositories you don't track (e.g., ones it learned about while
+pulling notifications); their issues are left out.
+
+With a prefix argument (=C-u=) only issues assigned to you are
+listed. Your username is looked up per forge host, the same way Forge
+does it (e.g., from the git variable =github.user=); repositories where
+it cannot be determined are skipped with a message. Usernames are
+compared exactly, so the configured username must match its case on
+the forge.
+
+** List buffer: =M-x magit-priority-list-issues=
+
+This shows the issues in a =*magit-priority*= buffer like:
 
 #+BEGIN_EXAMPLE
-    # Title
-    1 [priority:1] describe how to use priority:NUM labels
-    2 [priority:2] make some prioritized issues
+    Pri  Repository                    #  Title
+    1    emin63/alpha                  3  crash when saving
+    1    emin63/beta                  10  fix login loop
+    2    emin63/alpha                  1  slow startup
+    -    emin63/alpha                  2  typo in error message
 #+END_EXAMPLE
 
-which shows you all issues with a label that starts with =priority:=
-so that you can see prioritized issues. You can click on the =Title=
-column to control sorting by ascending/descending priority.
+In that buffer:
 
-You can use the =forge-get-repo-ids= function to get a list of the
-repositories in your forge along with the corresponding forge ID.
+| Key           | Action                                        |
+|---------------+-----------------------------------------------|
+| =RET=         | open the issue in Forge                       |
+| =b=           | open the issue in a web browser               |
+| =g=           | re-run the query (e.g. after =forge-pull=)    |
+| click headers | sort by that column (click again to reverse) |
+
+** Org table: =M-x magit-priority-org-table=
+
+This inserts the same list as an Org table at point (aligned, if the
+buffer is in Org mode):
+
+#+BEGIN_EXAMPLE
+    |-----+------------------+-----------------------|
+    | Pri | Issue            | Title                 |
+    |-----+------------------+-----------------------|
+    |   1 | emin63/alpha#3   | crash when saving     |
+    |   1 | emin63/beta#10   | fix login loop        |
+    |   2 | emin63/alpha#1   | slow startup          |
+    |   - | emin63/alpha#2   | typo in error message |
+    |-----+------------------+-----------------------|
+#+END_EXAMPLE
+
+Each =Issue= cell is an =orgit-topic:= link. Titles longer than
+=magit-priority-title-width= (default 60) are trimmed.
+
+*** Safety note: titles are cleaned, sometimes invisibly
+
+Issue titles and labels come from the forge, so anyone who can open an
+issue controls them. Inserting them into Org verbatim would be risky:
+for example, a title starting with ~=~ is an Org table formula, which
+Org evaluates as Lisp /without asking/ when you press TAB or RET in
+that cell. So before inserting, the code (in both the new and the old
+table functions):
+
+- turns newlines and other control characters into spaces;
+- replaces =|= with =\vert{}=;
+- inserts an invisible ZERO WIDTH SPACE (U+200B) before a leading ~=~
+  or ~:=~ (so it is not a formula) and inside =[[= (so it is not a
+  link).
+
+The zero width space is invisible but really there, so searching for
+or copying such a title includes it. See the comment above
+=magit-priority--one-line= in the source for details.
+
+** Calling from Lisp
+
+Both commands take the same first three arguments, so you can bind
+your favorite queries to keys or wrap them in your own commands:
+
+#+BEGIN_SRC emacs-lisp
+  ;; All prioritized issues, in every tracked repo, as an Org table.
+  (magit-priority-org-table nil)
+
+  ;; Issues labeled "bug" that are assigned to me, in a list buffer.
+  (magit-priority-list-issues "bug" t)
+
+  ;; Only search some repositories (see forge-get-repo-ids below).
+  (magit-priority-list-issues "bug" nil '("<repo-id-1>" "<repo-id-2>"))
+#+END_SRC
+
+The full signatures are:
+
+- =(magit-priority-list-issues EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN)=
+- =(magit-priority-org-table EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT)=,
+  which also returns the table as a string (pass =NO-INSERT= to only
+  get the string).
+- =(magit-priority-issues &optional EXTRA-LABEL ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN)=
+  returns the sorted issues as property lists if you want to build
+  something else on top.
+
+=REPO-IDS= of =nil= means every repository Forge tracks. You can use
+=M-x forge-get-repo-ids= to get a list of the repositories in your
+forge along with the corresponding forge ID.
+
+** How issues are sorted
+
+- An issue's priority is the first number in its label matching
+  =magit-priority-label-pattern= (default =priority:%=), lowest first.
+- If an issue has several priority labels, the most urgent one counts
+  and the issue is listed once.
+- Issues without a priority label come last.
+- Ties are broken by repository and then issue number.
+- Only open issues are listed.
+
+** Customization
+
+- =magit-priority-label-pattern= :: SQL LIKE pattern for priority labels
+  (default ="priority:%"=).
+- =magit-priority-title-width= :: maximum title width in Org tables, or
+  =nil= to never trim (default 60).
+
+* Older entry points
+
+The original functions still work, with these changes:
+
+- The file now does =(require 'forge)= instead of =(require
+  'forge-list)=, because Forge renamed =forge-list.el= to
+  =forge-topics.el= in April 2024.
+- =forge-list-orgit-labeled-issues-table= accepts =nil= for its list of
+  repository IDs, meaning every repository Forge tracks. So a
+  wrapper that used to list repo IDs by hand can become:
+  #+BEGIN_SRC emacs-lisp
+    (defun my-ghub-issues ()
+      "Insert an Org table of my prioritized issues."
+      (forge-list-orgit-labeled-issues-table nil "priority:%" t))
+  #+END_SRC
+  or, with the newer table format and options:
+  #+BEGIN_SRC emacs-lisp
+    (defun my-ghub-issues ()
+      "Insert an Org table of my prioritized issues."
+      (magit-priority-org-table nil))
+  #+END_SRC
+  Its output format is unchanged, except that titles and labels are
+  cleaned as described in the safety note above. Unlike
+  =magit-priority-org-table=, it lists an issue once per matching
+  label.
+- =forge-list-labeled-issues= (call it from inside a repository) and
+  =forge-list-labeled-issues-main= relied on Forge list-buffer
+  functions that no longer exist. They now open the
+  =magit-priority-list-issues= buffer restricted to that one
+  repository, using the label you give as the priority pattern. With
+  =priority:%= you get the same prioritized list as before, with the
+  priority in its own column instead of in the title.
+- =forge-list-labeled-issues-query=,
+  =forge-list-labeled-issues-multi-query= and
+  =forge-list-labeled-issues-put-label-in-title= are obsolete. The two
+  query functions now return the same property lists as
+  =magit-priority-issues=, and the multi-query function now honors its
+  label argument (it used to always use =priority:%=).
