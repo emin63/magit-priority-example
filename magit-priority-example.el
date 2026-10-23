@@ -31,6 +31,11 @@
 ;;     table at point.
 ;;   - `magit-priority-org-table-3' does the same but only lists
 ;;     priorities 1 to 3.
+;;   - `magit-priority-org-table-10' and `magit-priority-list-issues-10'
+;;     only list the 10 most urgent issues.
+;;
+;; When a priority or row limit is in effect, the Title column's
+;; header says so, e.g. "Title (priority 1-3, top 10 of 23)".
 ;;
 ;; They ask for an extra label (which may contain SQL `%' wildcards).
 ;; Only issues carrying that label are listed, prioritized ones first
@@ -652,18 +657,46 @@ A label without a number is shown as is (on one line)."
           (and max-priority (format ", priority 1-%d" max-priority))
           (and assigned-to-me ", assigned to you")))
 
+(defun magit-priority--limit-rows (issues max-rows)
+  "Return (SHOWN . TOTAL) for ISSUES limited to MAX-ROWS.
+SHOWN is the first MAX-ROWS of ISSUES (all of them if MAX-ROWS is
+nil) and TOTAL is the number of ISSUES before limiting."
+  (cons (if max-rows (take max-rows issues) issues)
+        (length issues)))
+
+(defun magit-priority--title-header (max-priority max-rows total)
+  "Return the header for the Title column, noting any limits.
+Mention MAX-PRIORITY if non-nil, and MAX-ROWS if it cut rows from
+the TOTAL matching issues, e.g. \"Title (priority 1-3, top 10 of
+23)\".  With no limits in effect, return \"Title\"."
+  (let ((notes (delq nil
+                     (list (and max-priority
+                                (format "priority 1-%d" max-priority))
+                           (and max-rows (> total max-rows)
+                                (format "top %d of %d" max-rows total))))))
+    (if notes
+        (format "Title (%s)" (string-join notes ", "))
+      "Title")))
+
+(defun magit-priority--count-message (shown total)
+  "Describe how many issues are SHOWN out of TOTAL."
+  (if (< shown total)
+      (format "%d of %d issue(s)" shown total)
+    (format "%d issue(s)" total)))
+
 ;;;;; Org table
 
-(defun magit-priority--org-table-string (issues)
+(defun magit-priority--org-table-string (issues &optional title-header)
   "Return an Org table string listing ISSUES.
 The columns are Issue (a link labeled with the repository name,
-without the owner, and the issue number), Title and Pri.
+without the owner, and the issue number), Title and Pri.  The
+Title column's header is TITLE-HEADER, or \"Title\" if nil.
 Text from the forge goes through `magit-priority--org-cell', which
 may add invisible zero width spaces; see the comment above
 `magit-priority--one-line'."
   (concat
    "|-------+-------+-----|\n"
-   "| Issue | Title | Pri |\n"
+   (format "| Issue | %s | Pri |\n" (or title-header "Title"))
    "|-------+-------+-----|\n"
    (mapconcat
     (lambda (issue)
@@ -682,12 +715,18 @@ may add invisible zero width spaces; see the comment above
    "|-------+-------+-----|\n"))
 
 (defun magit-priority--org-table (extra-label assigned-to-me repo-ids
-                                              no-insert max-priority report)
+                                              no-insert max-priority
+                                              max-rows report)
   "Do the work of `magit-priority-org-table' (which see).
 If REPORT is non-nil, show a message with the number of issues."
-  (let* ((issues (magit-priority-issues extra-label assigned-to-me repo-ids
-                                        nil max-priority))
-         (table (magit-priority--org-table-string issues)))
+  (pcase-let* ((`(,issues . ,total)
+                (magit-priority--limit-rows
+                 (magit-priority-issues extra-label assigned-to-me repo-ids
+                                        nil max-priority)
+                 max-rows))
+               (table (magit-priority--org-table-string
+                       issues (magit-priority--title-header
+                               max-priority max-rows total))))
     (unless no-insert
       (unless (bolp) (insert "\n"))
       (let ((start (point)))
@@ -697,14 +736,14 @@ If REPORT is non-nil, show a message with the number of issues."
             (goto-char start)
             (org-table-align)))))
     (when report
-      (message "%d issue(s): %s" (length issues)
+      (message "%s: %s" (magit-priority--count-message (length issues) total)
                (magit-priority--filter-description
                 extra-label assigned-to-me max-priority)))
     table))
 
 (defun magit-priority-org-table (extra-label &optional assigned-to-me
                                              repo-ids no-insert
-                                             max-priority)
+                                             max-priority max-rows)
   "Insert an Org table of open issues with EXTRA-LABEL, sorted by priority.
 
 Interactively, read EXTRA-LABEL with completion; it may contain
@@ -713,12 +752,17 @@ no extra label, so every prioritized issue is listed.  With a plain
 prefix argument (\\[universal-argument]), only list issues assigned
 to you (ASSIGNED-TO-ME).  With a numeric prefix argument N (e.g.
 \\`M-3'), only list issues with priority N or better (MAX-PRIORITY).
-See also `magit-priority-org-table-3'.
+See also `magit-priority-org-table-3' and `magit-priority-org-table-10'.
 
 Issues come from every repository Forge tracks unless REPO-IDS
 is a list of repository IDs.  If MAX-PRIORITY is a number, only
 issues with a priority from 1 to MAX-PRIORITY are listed, and
 unprioritized issues are left out; if nil, there is no limit.
+If MAX-ROWS is a number, only the first MAX-ROWS issues (the most
+urgent ones) are listed; if nil, there is no limit.  The Title
+column's header notes these limits, e.g. \"Title (priority 1-3)\"
+or \"Title (top 10 of 23)\"; the row limit is only noted when it
+actually left issues out.
 
 Each row links to the issue with an orgit-topic link, which opens
 it in Forge if `orgit-forge' is installed.  The table is inserted
@@ -730,7 +774,7 @@ See `magit-priority-issues' for how issues are chosen and sorted."
                             (magit-priority--interactive-args)))
                  (list label mine nil nil max)))
   (magit-priority--org-table extra-label assigned-to-me repo-ids no-insert
-                             max-priority
+                             max-priority max-rows
                              (called-interactively-p 'interactive)))
 
 (defun magit-priority-org-table-3 (extra-label &optional assigned-to-me
@@ -743,12 +787,29 @@ REPO-IDS and NO-INSERT are as in `magit-priority-org-table'."
   (interactive (list (magit-priority--read-label)
                      (and current-prefix-arg t)))
   (magit-priority--org-table extra-label assigned-to-me repo-ids no-insert
-                             3 (called-interactively-p 'interactive)))
+                             3 nil (called-interactively-p 'interactive)))
+
+(defun magit-priority-org-table-10 (extra-label &optional assigned-to-me
+                                                repo-ids no-insert)
+  "Like `magit-priority-org-table' but only list the first 10 issues.
+These are the 10 most urgent matching issues.  There is no limit on
+priority, so with an extra label, unprioritized issues can appear
+when fewer than 10 matching issues are prioritized.  Interactively,
+read EXTRA-LABEL as `magit-priority-org-table' does; with any prefix
+argument, only list issues assigned to you (ASSIGNED-TO-ME).  REPO-IDS and
+NO-INSERT are as in `magit-priority-org-table'."
+  (interactive (list (magit-priority--read-label)
+                     (and current-prefix-arg t)))
+  (magit-priority--org-table extra-label assigned-to-me repo-ids no-insert
+                             nil 10 (called-interactively-p 'interactive)))
 
 ;;;;; List buffer
 
 (defvar-local magit-priority--list-args nil
   "Arguments to `magit-priority-issues' for the current list buffer.")
+
+(defvar-local magit-priority--list-max-rows nil
+  "Maximum number of issues to show in the current list buffer, or nil.")
 
 (defvar-keymap magit-priority-list-mode-map
   :doc "Keymap for `magit-priority-list-mode'."
@@ -764,6 +825,13 @@ REPO-IDS and NO-INSERT are as in `magit-priority-org-table'."
   "Compare tabulated list entries A and B by issue number."
   (< (plist-get (car a) :number) (plist-get (car b) :number)))
 
+(defun magit-priority--list-format (title-header)
+  "Return a new `tabulated-list-format' with TITLE-HEADER for the Title."
+  (vector '("Pri" 4 magit-priority--sort-by-priority)
+          '("Repository" 28 t)
+          '("#" 6 magit-priority--sort-by-number :right-align t)
+          (list title-header 0 t)))
+
 (define-derived-mode magit-priority-list-mode tabulated-list-mode
   "Priority Issues"
   "Major mode for issues listed by `magit-priority-list-issues'.
@@ -773,11 +841,7 @@ the query (e.g. after `forge-pull'), \\[magit-priority-visit-issue] to open
 the issue in Forge, or \\[magit-priority-browse-issue] to open it in a browser.
 
 \\{magit-priority-list-mode-map}"
-  (setq tabulated-list-format
-        [("Pri" 4 magit-priority--sort-by-priority)
-         ("Repository" 28 t)
-         ("#" 6 magit-priority--sort-by-number :right-align t)
-         ("Title" 0 t)])
+  (setq tabulated-list-format (magit-priority--list-format "Title"))
   (setq tabulated-list-padding 1)
   ;; Start in the order `magit-priority-issues' returns, even if the
   ;; buffer was previously sorted by another column.
@@ -786,19 +850,37 @@ the issue in Forge, or \\[magit-priority-browse-issue] to open it in a browser.
   (tabulated-list-init-header))
 
 (defun magit-priority--refresh ()
-  "Re-run the query for the current `magit-priority-list-mode' buffer."
-  (setq tabulated-list-entries
-        (mapcar (lambda (issue)
-                  (list issue
-                        (vector (magit-priority--describe issue)
-                                (plist-get issue :repo)
-                                (number-to-string (plist-get issue :number))
-                                (plist-get issue :title))))
-                (apply #'magit-priority-issues magit-priority--list-args))))
+  "Re-run the query for the current `magit-priority-list-mode' buffer.
+Also update the Title column's header to note the limits in effect."
+  (pcase-let* ((`(,issues . ,total)
+                (magit-priority--limit-rows
+                 (apply #'magit-priority-issues magit-priority--list-args)
+                 magit-priority--list-max-rows))
+               (title (magit-priority--title-header
+                       (nth 4 magit-priority--list-args) ; max-priority
+                       magit-priority--list-max-rows total)))
+    ;; The Title column's name changes with the header, so a sort by
+    ;; that column must follow the new name or `tabulated-list-print'
+    ;; would not find the column.
+    (when (and tabulated-list-sort-key
+               (string-prefix-p "Title" (car tabulated-list-sort-key)))
+      (setq tabulated-list-sort-key
+            (cons title (cdr tabulated-list-sort-key))))
+    (setq tabulated-list-format (magit-priority--list-format title))
+    (tabulated-list-init-header)
+    (setq tabulated-list-entries
+          (mapcar (lambda (issue)
+                    (list issue
+                          (vector (magit-priority--describe issue)
+                                  (plist-get issue :repo)
+                                  (number-to-string (plist-get issue :number))
+                                  (plist-get issue :title))))
+                  issues))
+    (message "%s" (magit-priority--count-message (length issues) total))))
 
 (defun magit-priority-list-issues (extra-label &optional assigned-to-me
                                                repo-ids priority-pattern
-                                               max-priority)
+                                               max-priority max-rows)
   "List open issues with EXTRA-LABEL, sorted by priority, in a buffer.
 
 Interactively, read EXTRA-LABEL with completion; it may contain
@@ -812,9 +894,13 @@ Issues come from every repository Forge tracks unless REPO-IDS
 is a list of repository IDs.  PRIORITY-PATTERN overrides
 `magit-priority-label-pattern'.  If MAX-PRIORITY is a number, only
 issues with a priority from 1 to MAX-PRIORITY are listed, and
-unprioritized issues are left out.  See `magit-priority-issues'
-for how issues are chosen and sorted, and `magit-priority-list-mode'
-for the keys available in the buffer."
+unprioritized issues are left out.  If MAX-ROWS is a number, only
+the first MAX-ROWS issues (the most urgent ones) are listed.  The
+Title column's header notes these limits, as in
+`magit-priority-org-table'.  See also `magit-priority-list-issues-10'.
+
+See `magit-priority-issues' for how issues are chosen and sorted,
+and `magit-priority-list-mode' for the keys available in the buffer."
   (interactive (pcase-let ((`(,label ,mine ,max)
                             (magit-priority--interactive-args)))
                  (list label mine nil nil max)))
@@ -823,13 +909,25 @@ for the keys available in the buffer."
     (setq magit-priority--list-args
           (list extra-label assigned-to-me repo-ids priority-pattern
                 max-priority))
+    (setq magit-priority--list-max-rows max-rows)
     (setq mode-line-process
           (format " [%s]" (magit-priority--filter-description
                            extra-label assigned-to-me max-priority)))
     (magit-priority--refresh)
     (tabulated-list-print)
-    (pop-to-buffer (current-buffer))
-    (message "%d issue(s)" (length tabulated-list-entries))))
+    (pop-to-buffer (current-buffer))))
+
+(defun magit-priority-list-issues-10 (extra-label &optional assigned-to-me
+                                                  repo-ids)
+  "Like `magit-priority-list-issues' but only list the first 10 issues.
+These are the 10 most urgent matching issues, with no limit on
+priority.  Interactively, read EXTRA-LABEL as
+`magit-priority-list-issues' does; with any prefix argument, only
+list issues assigned to you (ASSIGNED-TO-ME).  REPO-IDS is as in
+`magit-priority-list-issues'."
+  (interactive (list (magit-priority--read-label)
+                     (and current-prefix-arg t)))
+  (magit-priority-list-issues extra-label assigned-to-me repo-ids nil nil 10))
 
 (defun magit-priority--issue-at-point ()
   "Return the Forge issue object on the current line."
