@@ -29,9 +29,13 @@ and is only as fresh as your last =forge-pull=.
 
 * Usage
 
-Both commands below ask for an /extra label/:
+The commands below ask for an /extra label/:
 
-- Type a label (with completion) such as =bug= to list open issues with
+- The first choice, and the default, is =*all prioritized*=, which
+  lists every prioritized issue. Just press RET for it. (It is a real
+  choice rather than empty input because completion UIs such as
+  Vertico, Ivy and Helm select the first candidate when you press RET.)
+- Or type a label (with completion) such as =bug= to list open issues with
   that label. Prioritized issues come first, sorted by priority, and
   issues without a priority label are listed at the bottom.
 - The label is an SQL =LIKE= pattern, so =area:%= matches =area:ui=,
@@ -40,7 +44,8 @@ Both commands below ask for an /extra label/:
   - =_= is also a wildcard matching any single character, so
     =needs_review= also matches =needs-review=.
   - Matching ignores case, so =bug= also matches =BUG=.
-- Leave it empty (or only spaces) to list every prioritized issue.
+- Blank input (empty or only spaces) also lists every prioritized
+  issue.
 
 Only repositories Forge /tracks/ are searched. Forge also stores some
 repositories you don't track (e.g., ones it learned about while
@@ -52,6 +57,17 @@ does it (e.g., from the git variable =github.user=); repositories where
 it cannot be determined are skipped with a message. Usernames are
 compared exactly, so the configured username must match its case on
 the forge.
+
+To see only the most urgent issues, limit the priority:
+
+- =M-x magit-priority-org-table-3= inserts an Org table of priorities
+  1 to 3 only (=C-u= still means assigned to you).
+- With =magit-priority-org-table= or =magit-priority-list-issues=, a
+  numeric prefix argument N (e.g. =M-3= or =C-u 3=) lists priorities 1
+  to N only.
+
+When the priority is limited this way, unprioritized issues are left
+out.
 
 ** List buffer: =M-x magit-priority-list-issues=
 
@@ -116,12 +132,21 @@ or copying such a title includes it. See the comment above
 
 ** Calling from Lisp
 
-Both commands take the same first three arguments, so you can bind
-your favorite queries to keys or wrap them in your own commands:
+You can bind the commands directly to keys, e.g. with
+=#'magit-priority-org-table-3=; they then prompt for the label as
+above. (Bind the command itself, not a call such as
+=(magit-priority-org-table)=, which would fail because the label is a
+required argument when called from Lisp.)
+
+The commands take the same first three arguments, so you can also wrap
+your favorite queries in your own commands:
 
 #+BEGIN_SRC emacs-lisp
   ;; All prioritized issues, in every tracked repo, as an Org table.
   (magit-priority-org-table nil)
+
+  ;; The same, but only priorities 1 to 3.
+  (magit-priority-org-table-3 nil)
 
   ;; Issues labeled "bug" that are assigned to me, in a list buffer.
   (magit-priority-list-issues "bug" t)
@@ -132,13 +157,18 @@ your favorite queries to keys or wrap them in your own commands:
 
 The full signatures are:
 
-- =(magit-priority-list-issues EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN)=
-- =(magit-priority-org-table EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT)=,
+- =(magit-priority-list-issues EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN MAX-PRIORITY)=
+- =(magit-priority-org-table EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT MAX-PRIORITY)=,
   which also returns the table as a string (pass =NO-INSERT= to only
   get the string).
-- =(magit-priority-issues &optional EXTRA-LABEL ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN)=
+- =(magit-priority-org-table-3 EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT)=
+  is the same with =MAX-PRIORITY= fixed at 3.
+- =(magit-priority-issues &optional EXTRA-LABEL ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN MAX-PRIORITY)=
   returns the sorted issues as property lists if you want to build
   something else on top.
+
+=MAX-PRIORITY= of =nil= means no limit; a number N means only
+priorities 1 to N, without unprioritized issues.
 
 =REPO-IDS= of =nil= means every repository Forge tracks. You can use
 =M-x forge-get-repo-ids= to get a list of the repositories in your
