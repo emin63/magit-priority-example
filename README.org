@@ -69,6 +69,16 @@ To see only the most urgent issues, limit the priority:
 When the priority is limited this way, unprioritized issues are left
 out.
 
+Or limit the number of rows:
+
+- =M-x magit-priority-org-table-10= and =M-x
+  magit-priority-list-issues-10= list only the 10 most urgent issues,
+  with no limit on priority (=C-u= still means assigned to you).
+
+When either limit is in effect, the =Title= column's header says so,
+e.g. =Title (priority 1-3)= or =Title (top 10 of 23)=. The row limit
+is only mentioned when it actually left issues out.
+
 ** List buffer: =M-x magit-priority-list-issues=
 
 This shows the issues in a =*magit-priority*= buffer like:
@@ -148,6 +158,10 @@ your favorite queries in your own commands:
   ;; The same, but only priorities 1 to 3.
   (magit-priority-org-table-3 nil)
 
+  ;; The 5 most urgent issues labeled "bug" (fifth and sixth
+  ;; arguments are MAX-PRIORITY and MAX-ROWS).
+  (magit-priority-org-table "bug" nil nil nil nil 5)
+
   ;; Issues labeled "bug" that are assigned to me, in a list buffer.
   (magit-priority-list-issues "bug" t)
 
@@ -157,18 +171,24 @@ your favorite queries in your own commands:
 
 The full signatures are:
 
-- =(magit-priority-list-issues EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN MAX-PRIORITY)=
-- =(magit-priority-org-table EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT MAX-PRIORITY)=,
+- =(magit-priority-list-issues EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN MAX-PRIORITY MAX-ROWS)=
+- =(magit-priority-list-issues-10 EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS)=
+  is the same with =MAX-ROWS= fixed at 10.
+- =(magit-priority-org-table EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT MAX-PRIORITY MAX-ROWS)=,
   which also returns the table as a string (pass =NO-INSERT= to only
   get the string).
 - =(magit-priority-org-table-3 EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT)=
   is the same with =MAX-PRIORITY= fixed at 3.
+- =(magit-priority-org-table-10 EXTRA-LABEL &optional ASSIGNED-TO-ME REPO-IDS NO-INSERT)=
+  is the same with =MAX-ROWS= fixed at 10.
 - =(magit-priority-issues &optional EXTRA-LABEL ASSIGNED-TO-ME REPO-IDS PRIORITY-PATTERN MAX-PRIORITY)=
   returns the sorted issues as property lists if you want to build
   something else on top.
 
 =MAX-PRIORITY= of =nil= means no limit; a number N means only
-priorities 1 to N, without unprioritized issues.
+priorities 1 to N, without unprioritized issues. =MAX-ROWS= of =nil=
+means no limit; a number N means only the first (most urgent) N
+issues.
 
 =REPO-IDS= of =nil= means every repository Forge tracks. You can use
 =M-x forge-get-repo-ids= to get a list of the repositories in your
