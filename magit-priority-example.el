@@ -29,12 +29,16 @@
 ;;     repository Forge tracks, sorted by priority, in a list buffer.
 ;;   - `magit-priority-org-table' inserts the same list as an Org
 ;;     table at point.
+;;   - `magit-priority-org-table-3' does the same but only lists
+;;     priorities 1 to 3.
 ;;
-;; Both ask for an extra label (which may contain SQL `%' wildcards).
+;; They ask for an extra label (which may contain SQL `%' wildcards).
 ;; Only issues carrying that label are listed, prioritized ones first
-;; and unprioritized ones at the bottom.  If you leave the extra label
-;; empty you get every prioritized issue.  With a prefix argument
-;; (C-u) only issues assigned to you are listed.
+;; and unprioritized ones at the bottom.  The first choice, "*all
+;; prioritized*", lists every prioritized issue instead.  With a
+;; prefix argument (C-u) only issues assigned to you are listed.  With
+;; a numeric prefix argument N (e.g. M-3), the first two only list
+;; priorities 1 to N.
 ;;
 ;; The older entry points `forge-list-labeled-issues' and
 ;; `forge-list-orgit-labeled-issues-table' still work; see the README
@@ -522,7 +526,8 @@ Usernames are compared exactly (case matters), as Forge does."
      issues)))
 
 (defun magit-priority-issues (&optional extra-label assigned-to-me
-                                        repo-ids priority-pattern)
+                                        repo-ids priority-pattern
+                                        max-priority)
   "Return open issues sorted by priority.
 
 If EXTRA-LABEL is a non-blank string, return issues that have a
@@ -547,6 +552,11 @@ repositories; if nil, search every repository Forge tracks.  See
 
 PRIORITY-PATTERN overrides `magit-priority-label-pattern'.
 
+If MAX-PRIORITY is a number, only return issues whose priority is
+at most MAX-PRIORITY, so 3 means priorities 1, 2 and 3.  Issues
+without a numbered priority label are then left out too.  If
+MAX-PRIORITY is nil, there is no limit.
+
 Each issue is a property list with the keys :id (the Forge ID),
 :number, :title (on one line; see `magit-priority--one-line'),
 :repo (\"owner/name\"), :name (the repository name without the
@@ -570,17 +580,59 @@ owner), :repo-id, :label (the priority label, or nil) and
                     :repo-id repo-id
                     :label label :priority (magit-priority--rank label))
               issues)))
+    (when max-priority
+      (setq issues (cl-remove-if-not
+                    (lambda (issue)
+                      (let ((priority (plist-get issue :priority)))
+                        (and priority (<= priority max-priority))))
+                    issues)))
     (when assigned-to-me
       (setq issues (magit-priority--only-mine issues)))
     (sort issues #'magit-priority--issue<)))
 
+(defconst magit-priority--all-prioritized "*all prioritized*"
+  "Choice in the label prompt meaning \"no extra label\".
+`magit-priority--read-label' offers it first and as the default,
+so RET picks it.")
+
 (defun magit-priority--read-label ()
-  "Read an extra label with completion, or return nil if left blank."
-  (magit-priority--nonblank
-   (completing-read
-    "Extra label (% is a wildcard, empty for all prioritized): "
-    (delete-dups
-     (mapcar #'car (forge-sql [:select :distinct [name] :from label]))))))
+  "Read an extra label with completion, or return nil for no extra label.
+
+The first choice, and the default, is `magit-priority--all-prioritized',
+so RET picks it.  It is offered as a real choice (not just as empty
+input) because completion UIs such as Vertico, Ivy and Helm select
+the first choice, so RET on empty input would pick a label instead.
+The labels follow in alphabetical order.  Blank input also means no
+extra label."
+  (let* ((all magit-priority--all-prioritized)
+         (labels (sort (delete-dups
+                        (delq nil (mapcar #'car (forge-sql [:select :distinct
+                                                            [name]
+                                                            :from label]))))
+                       #'string<))
+         (choices (cons all labels))
+         (choice (completing-read
+                  (format-prompt "Extra label (% is a wildcard)" all)
+                  ;; Ask completion UIs to keep our order, so the
+                  ;; "all prioritized" choice stays first.
+                  (lambda (string pred action)
+                    (if (eq action 'metadata)
+                        '(metadata (display-sort-function . identity)
+                                   (cycle-sort-function . identity))
+                      (complete-with-action action choices string pred)))
+                  nil nil nil nil all)))
+    (and (not (equal choice all))
+         (magit-priority--nonblank choice))))
+
+(defun magit-priority--interactive-args ()
+  "Return (EXTRA-LABEL ASSIGNED-TO-ME MAX-PRIORITY) for a command.
+Read the extra label.  A plain prefix argument (\\[universal-argument])
+means assigned to you.  A numeric prefix argument N (e.g. \\`M-3') means
+a maximum priority of N."
+  (let ((arg current-prefix-arg))
+    (list (magit-priority--read-label)
+          (consp arg)
+          (and (natnump arg) (> arg 0) arg))))
 
 (defun magit-priority--describe (issue)
   "Return the text for the priority column of ISSUE.
@@ -591,11 +643,13 @@ A label without a number is shown as is (on one line)."
           (label (magit-priority--one-line label))
           (t "-"))))
 
-(defun magit-priority--filter-description (extra-label assigned-to-me)
-  "Describe the filter given by EXTRA-LABEL and ASSIGNED-TO-ME."
+(defun magit-priority--filter-description (extra-label assigned-to-me
+                                                        &optional max-priority)
+  "Describe the filter given by EXTRA-LABEL, ASSIGNED-TO-ME, MAX-PRIORITY."
   (concat (if (magit-priority--nonblank extra-label)
               (format "label %s" extra-label)
             "all prioritized")
+          (and max-priority (format ", priority 1-%d" max-priority))
           (and assigned-to-me ", assigned to you")))
 
 ;;;;; Org table
@@ -627,25 +681,12 @@ may add invisible zero width spaces; see the comment above
     issues "")
    "|-------+-------+-----|\n"))
 
-(defun magit-priority-org-table (extra-label &optional assigned-to-me
-                                             repo-ids no-insert)
-  "Insert an Org table of open issues with EXTRA-LABEL, sorted by priority.
-
-Interactively, read EXTRA-LABEL with completion; it may contain
-SQL `%' wildcards, and if left empty every prioritized issue is
-listed.  With a prefix argument, only list issues assigned to
-you (ASSIGNED-TO-ME).
-
-Issues come from every repository Forge tracks unless REPO-IDS
-is a list of repository IDs.  Each row links to the issue with an
-orgit-topic link, which opens it in Forge if `orgit-forge' is
-installed.  The table is inserted at point, and aligned if the
-buffer is in Org mode, unless NO-INSERT is non-nil.  It is
-returned as a string either way.
-
-See `magit-priority-issues' for how issues are chosen and sorted."
-  (interactive (list (magit-priority--read-label) current-prefix-arg))
-  (let* ((issues (magit-priority-issues extra-label assigned-to-me repo-ids))
+(defun magit-priority--org-table (extra-label assigned-to-me repo-ids
+                                              no-insert max-priority report)
+  "Do the work of `magit-priority-org-table' (which see).
+If REPORT is non-nil, show a message with the number of issues."
+  (let* ((issues (magit-priority-issues extra-label assigned-to-me repo-ids
+                                        nil max-priority))
          (table (magit-priority--org-table-string issues)))
     (unless no-insert
       (unless (bolp) (insert "\n"))
@@ -655,11 +696,54 @@ See `magit-priority-issues' for how issues are chosen and sorted."
           (save-excursion
             (goto-char start)
             (org-table-align)))))
-    (when (called-interactively-p 'interactive)
+    (when report
       (message "%d issue(s): %s" (length issues)
-               (magit-priority--filter-description extra-label
-                                                   assigned-to-me)))
+               (magit-priority--filter-description
+                extra-label assigned-to-me max-priority)))
     table))
+
+(defun magit-priority-org-table (extra-label &optional assigned-to-me
+                                             repo-ids no-insert
+                                             max-priority)
+  "Insert an Org table of open issues with EXTRA-LABEL, sorted by priority.
+
+Interactively, read EXTRA-LABEL with completion; it may contain
+SQL `%' wildcards.  The first choice, \"*all prioritized*\", means
+no extra label, so every prioritized issue is listed.  With a plain
+prefix argument (\\[universal-argument]), only list issues assigned
+to you (ASSIGNED-TO-ME).  With a numeric prefix argument N (e.g.
+\\`M-3'), only list issues with priority N or better (MAX-PRIORITY).
+See also `magit-priority-org-table-3'.
+
+Issues come from every repository Forge tracks unless REPO-IDS
+is a list of repository IDs.  If MAX-PRIORITY is a number, only
+issues with a priority from 1 to MAX-PRIORITY are listed, and
+unprioritized issues are left out; if nil, there is no limit.
+
+Each row links to the issue with an orgit-topic link, which opens
+it in Forge if `orgit-forge' is installed.  The table is inserted
+at point, and aligned if the buffer is in Org mode, unless
+NO-INSERT is non-nil.  It is returned as a string either way.
+
+See `magit-priority-issues' for how issues are chosen and sorted."
+  (interactive (pcase-let ((`(,label ,mine ,max)
+                            (magit-priority--interactive-args)))
+                 (list label mine nil nil max)))
+  (magit-priority--org-table extra-label assigned-to-me repo-ids no-insert
+                             max-priority
+                             (called-interactively-p 'interactive)))
+
+(defun magit-priority-org-table-3 (extra-label &optional assigned-to-me
+                                               repo-ids no-insert)
+  "Like `magit-priority-org-table' but only list priorities 1 to 3.
+Unprioritized issues are left out.  Interactively, read
+EXTRA-LABEL as `magit-priority-org-table' does; with any prefix
+argument, only list issues assigned to you (ASSIGNED-TO-ME).
+REPO-IDS and NO-INSERT are as in `magit-priority-org-table'."
+  (interactive (list (magit-priority--read-label)
+                     (and current-prefix-arg t)))
+  (magit-priority--org-table extra-label assigned-to-me repo-ids no-insert
+                             3 (called-interactively-p 'interactive)))
 
 ;;;;; List buffer
 
@@ -713,27 +797,35 @@ the issue in Forge, or \\[magit-priority-browse-issue] to open it in a browser.
                 (apply #'magit-priority-issues magit-priority--list-args))))
 
 (defun magit-priority-list-issues (extra-label &optional assigned-to-me
-                                               repo-ids priority-pattern)
+                                               repo-ids priority-pattern
+                                               max-priority)
   "List open issues with EXTRA-LABEL, sorted by priority, in a buffer.
 
 Interactively, read EXTRA-LABEL with completion; it may contain
-SQL `%' wildcards, and if left empty every prioritized issue is
-listed.  With a prefix argument, only list issues assigned to
-you (ASSIGNED-TO-ME).
+SQL `%' wildcards.  The first choice, \"*all prioritized*\", means
+no extra label, so every prioritized issue is listed.  With a plain
+prefix argument (\\[universal-argument]), only list issues assigned
+to you (ASSIGNED-TO-ME).  With a numeric prefix argument N (e.g.
+\\`M-3'), only list issues with priority N or better (MAX-PRIORITY).
 
 Issues come from every repository Forge tracks unless REPO-IDS
 is a list of repository IDs.  PRIORITY-PATTERN overrides
-`magit-priority-label-pattern'.  See `magit-priority-issues' for
-how issues are chosen and sorted, and `magit-priority-list-mode'
+`magit-priority-label-pattern'.  If MAX-PRIORITY is a number, only
+issues with a priority from 1 to MAX-PRIORITY are listed, and
+unprioritized issues are left out.  See `magit-priority-issues'
+for how issues are chosen and sorted, and `magit-priority-list-mode'
 for the keys available in the buffer."
-  (interactive (list (magit-priority--read-label) current-prefix-arg))
+  (interactive (pcase-let ((`(,label ,mine ,max)
+                            (magit-priority--interactive-args)))
+                 (list label mine nil nil max)))
   (with-current-buffer (get-buffer-create "*magit-priority*")
     (magit-priority-list-mode)
     (setq magit-priority--list-args
-          (list extra-label assigned-to-me repo-ids priority-pattern))
+          (list extra-label assigned-to-me repo-ids priority-pattern
+                max-priority))
     (setq mode-line-process
           (format " [%s]" (magit-priority--filter-description
-                           extra-label assigned-to-me)))
+                           extra-label assigned-to-me max-priority)))
     (magit-priority--refresh)
     (tabulated-list-print)
     (pop-to-buffer (current-buffer))
